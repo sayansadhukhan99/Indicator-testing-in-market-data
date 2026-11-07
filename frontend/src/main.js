@@ -1,5 +1,6 @@
 import './styles.css';
 import { SMCEngine } from './smc/engine.js';
+import { BEARISH, BULLISH } from './smc/config.js';
 import { SMCPrimitive } from './primitives/smc.js';
 import { createSMCChart, visibleBarsForResolution } from './chart.js';
 import {
@@ -10,7 +11,17 @@ import {
   rangeForDays,
 } from './api.js';
 import {
+  buildAnalysis,
+  clipDrawables,
+  istBusinessDay,
+  shiftIsoDate,
+  sliceBarsToRange,
+  timeKey,
+  warmupDaysFor,
+} from './range.js';
+import {
   applyDefaults,
+  applyMode,
   bindControls,
   readSettings,
   setMeta,
@@ -20,7 +31,6 @@ import {
 
 const DAILY_RESOLUTIONS = new Set(['D', 'W', 'M', '1D', '1W', '1M']);
 const POLL_MS = 5000;
-const IST_OFFSET_SECONDS = 19800;
 
 const RESOLUTION_LABELS = {
   1: '1m',
@@ -71,7 +81,10 @@ series.attachPrimitive(primitive);
 const state = {
   config: null,
   settings: null,
+  mode: 'live',
   bars: [],
+  displayBars: [],
+  range: null,
   signature: '',
   pollTimer: null,
   loadedOnce: false,
@@ -88,7 +101,10 @@ async function init() {
     onReload: () => loadData({ resetView: true }),
     onToggle: () => rerun(),
     onAuth: authenticate,
+    onModeChange: () => loadData({ resetView: true }),
   });
+  applyDefaults({});
+  applyMode(readSettings().mode);
 
   if (DEMO_MODE) {
     state.demo = true;
@@ -144,11 +160,33 @@ async function loadData({ resetView = false } = {}) {
     return;
   }
 
+  const dateMode = settings.mode === 'date';
+  if (dateMode) {
+    if (!settings.dateFrom || !settings.dateTo) {
+      setStatus('Choose both a From and To date for date mode.', 'error');
+      return;
+    }
+    if (settings.dateFrom > settings.dateTo) {
+      setStatus('From date must be on or before the To date.', 'error');
+      return;
+    }
+  }
+
   state.settings = settings;
-  const { from, to } = rangeForDays(settings.rangeDays);
+  state.mode = settings.mode;
+
+  const { from, to } = dateMode
+    ? { from: settings.dateFrom, to: settings.dateTo }
+    : rangeForDays(settings.rangeDays);
+  const fetchFrom = dateMode
+    ? shiftIsoDate(from, -warmupDaysFor(settings.resolution))
+    : from;
+  const label = RESOLUTION_LABELS[settings.resolution] || settings.resolution;
 
   setStatus(
-    `Loading ${settings.symbol} ${RESOLUTION_LABELS[settings.resolution] || settings.resolution}…`,
+    dateMode
+      ? `Loading ${settings.symbol} ${label} · ${from} → ${to}…`
+      : `Loading ${settings.symbol} ${label}…`,
     'loading',
   );
 
@@ -156,48 +194,119 @@ async function loadData({ resetView = false } = {}) {
     const data = await fetchHistory({
       symbol: settings.symbol,
       resolution: settings.resolution,
-      from,
+      from: fetchFrom,
       to,
     });
     const bars = normalizeBars(data.candles, settings.resolution);
+    const displayBars = dateMode ? sliceBarsToRange(bars, from, to) : bars;
 
-    if (bars.length === 0) {
-      setStatus('No candles returned for this symbol/range.', 'error');
+    if (displayBars.length === 0) {
+      setStatus(
+        dateMode
+          ? `No candles returned for ${from} → ${to}.`
+          : 'No candles returned for this symbol/range.',
+        'error',
+      );
       return;
     }
 
     state.bars = bars;
-    state.signature = signatureOf(bars);
-    series.setData(chartData(bars));
+    state.displayBars = displayBars;
+    state.range = dateMode
+      ? {
+          from,
+          to,
+          fromTime: displayBars[0].time,
+          toTime: displayBars[displayBars.length - 1].time,
+        }
+      : null;
+    state.signature = signatureOf(displayBars);
+    series.setData(chartData(displayBars));
     rerun();
 
     if (resetView || !state.loadedOnce) {
-      focusRecent(bars.length, settings.resolution);
+      if (dateMode) {
+        chart.timeScale().fitContent();
+      } else {
+        focusRecent(displayBars.length, settings.resolution);
+      }
     }
 
     state.loadedOnce = true;
     state.authenticated = true;
     showAuthButton(false);
     updateMeta();
-    setStatus(`Loaded ${bars.length.toLocaleString('en-IN')} candles`, 'ok');
+    setStatus(
+      dateMode
+        ? `Date mode · ${displayBars.length.toLocaleString('en-IN')} candles · ${from} → ${to}`
+        : `Loaded ${displayBars.length.toLocaleString('en-IN')} candles`,
+      'ok',
+    );
   } catch (error) {
     handleError(error);
   }
 }
 
 function loadDemo({ resetView = true } = {}) {
-  state.settings = readSettings();
+  const settings = readSettings();
+  const dateMode = settings.mode === 'date';
+  if (dateMode) {
+    if (!settings.dateFrom || !settings.dateTo) {
+      setStatus('Choose both a From and To date for date mode.', 'error');
+      return;
+    }
+    if (settings.dateFrom > settings.dateTo) {
+      setStatus('From date must be on or before the To date.', 'error');
+      return;
+    }
+  }
+
+  state.settings = settings;
+  state.mode = settings.mode;
+
   const bars = makeDemoBars(1400);
+  const displayBars = dateMode
+    ? sliceBarsToRange(bars, settings.dateFrom, settings.dateTo)
+    : bars;
+
+  if (displayBars.length === 0) {
+    setStatus(
+      dateMode
+        ? `No demo candles for ${settings.dateFrom} → ${settings.dateTo}.`
+        : 'No demo candles generated.',
+      'error',
+    );
+    return;
+  }
+
   state.bars = bars;
-  state.signature = signatureOf(bars);
-  series.setData(chartData(bars));
+  state.displayBars = displayBars;
+  state.range = dateMode
+    ? {
+        from: settings.dateFrom,
+        to: settings.dateTo,
+        fromTime: displayBars[0].time,
+        toTime: displayBars[displayBars.length - 1].time,
+      }
+    : null;
+  state.signature = signatureOf(displayBars);
+  series.setData(chartData(displayBars));
   rerun();
   if (resetView || !state.loadedOnce) {
-    focusRecent(bars.length, state.settings.resolution);
+    if (dateMode) {
+      chart.timeScale().fitContent();
+    } else {
+      focusRecent(displayBars.length, settings.resolution);
+    }
   }
   state.loadedOnce = true;
   updateMeta();
-  setStatus('Demo data — remove ?demo=1 and start the backend for live Fyers data', 'ok');
+  setStatus(
+    dateMode
+      ? `Date mode (demo) · ${displayBars.length.toLocaleString('en-IN')} candles · ${settings.dateFrom} → ${settings.dateTo}`
+      : 'Demo data — remove ?demo=1 and start the backend for live Fyers data',
+    'ok',
+  );
 }
 
 function makeDemoBars(count) {
@@ -245,7 +354,12 @@ function rerun() {
     : current;
 
   const engine = new SMCEngine(state.settings.config);
-  primitive.setDrawables(engine.run(state.bars));
+  const drawables = engine.run(state.bars);
+  const visible = state.range
+    ? clipDrawables(drawables, state.range.fromTime, state.range.toTime)
+    : drawables;
+  primitive.setDrawables(visible);
+  updateAnalysis(engine);
   updateMeta();
 }
 
@@ -285,20 +399,6 @@ function chartData(bars) {
   }));
 }
 
-function istBusinessDay(epochSeconds) {
-  return new Date((Number(epochSeconds) + IST_OFFSET_SECONDS) * 1000)
-    .toISOString()
-    .slice(0, 10);
-}
-
-function timeKey(time) {
-  if (typeof time === 'number') {
-    return time;
-  }
-  const [year, month, day] = String(time).split('-').map(Number);
-  return Date.UTC(year, month - 1, day) / 1000;
-}
-
 function signatureOf(bars) {
   if (!bars.length) return 'empty';
   const last = bars[bars.length - 1];
@@ -331,7 +431,13 @@ function startPolling() {
 
 async function poll() {
   const settings = state.settings;
-  if (!settings || !state.authenticated || !settings.autoRefresh || document.hidden) {
+  if (
+    !settings ||
+    settings.mode !== 'live' ||
+    !state.authenticated ||
+    !settings.autoRefresh ||
+    document.hidden
+  ) {
     return;
   }
   if (!isMarketOpen()) {
@@ -356,6 +462,7 @@ async function poll() {
     }
 
     state.bars = merged;
+    state.displayBars = merged;
     state.signature = nextSignature;
     series.setData(chartData(merged));
     rerun();
@@ -380,22 +487,101 @@ function isMarketOpen(now = new Date()) {
 }
 
 function updateMeta() {
-  if (!state.bars.length || !state.settings) {
+  const bars = state.displayBars.length ? state.displayBars : state.bars;
+  if (!bars.length || !state.settings) {
     setMeta('');
     return;
   }
-  const last = state.bars[state.bars.length - 1];
+  const last = bars[bars.length - 1];
   const label = formatBarTime(last.time);
   const price = last.close.toLocaleString('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
   const resolution = state.settings.resolution;
+  const range = state.range ? ` · ${state.range.from} → ${state.range.to}` : '';
   setMeta(
-    `${state.bars.length.toLocaleString('en-IN')} bars · ${
+    `${bars.length.toLocaleString('en-IN')} bars · ${
       RESOLUTION_LABELS[resolution] || resolution
-    } · LTP ${price} · ${label}`,
+    } · LTP ${price} · ${label}${range}`,
   );
+}
+
+function updateAnalysis(engine) {
+  const panel = document.getElementById('analysis');
+  if (!state.range || state.settings?.mode !== 'date') {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+
+  const analysis = buildAnalysis(
+    engine,
+    state.range.fromTime,
+    state.range.toTime,
+    state.displayBars.length,
+  );
+
+  setText('analysisRange', `${state.range.from} → ${state.range.to}`);
+  setText('aBars', analysis.bars.toLocaleString('en-IN'));
+  setText('aSwingTrend', trendLabel(analysis.swingTrend));
+  setText('aInternalTrend', trendLabel(analysis.internalTrend));
+  setText(
+    'aStructures',
+    `${analysis.structures.total} (${analysis.structures.bullish}↑ / ${analysis.structures.bearish}↓)`,
+  );
+  setText('aSignals', `${analysis.structures.breaker} / ${analysis.structures.trap}`);
+  setText(
+    'aObs',
+    `Int ${analysis.internalOrderBlocks} · Swing ${analysis.swingOrderBlocks}`,
+  );
+  setText('aEq', String(analysis.equalDisplays));
+  setText('aSwingPoints', String(analysis.swingPoints));
+  setText(
+    'aLevels',
+    `Swing ${formatPrice(analysis.swingHigh)} / ${formatPrice(analysis.swingLow)} · Int ${formatPrice(analysis.internalHigh)} / ${formatPrice(analysis.internalLow)}`,
+  );
+
+  const events = document.getElementById('analysisEvents');
+  events.replaceChildren();
+
+  if (analysis.alerts.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'events-empty';
+    empty.textContent = 'No signals in this range.';
+    events.append(empty);
+    return;
+  }
+
+  for (const alert of analysis.alerts) {
+    const item = document.createElement('li');
+    const tag = document.createElement('span');
+    tag.className = `event-tag ${alert.side === BULLISH ? 'bull' : 'bear'}`;
+    tag.textContent = alert.tag === 'OrderBlockBreak' ? 'OB break' : alert.tag;
+    const meta = document.createElement('span');
+    meta.className = 'event-meta';
+    meta.textContent = `${alert.internal ? 'Internal' : 'Swing'} · ${formatBarTime(alert.time)}`;
+    item.append(tag, meta);
+    events.append(item);
+  }
+}
+
+function setText(id, text) {
+  document.getElementById(id).textContent = text;
+}
+
+function trendLabel(trend) {
+  if (trend === BULLISH) return 'Bullish';
+  if (trend === BEARISH) return 'Bearish';
+  return '—';
+}
+
+function formatPrice(value) {
+  if (value == null || Number.isNaN(Number(value))) return '—';
+  return Number(value).toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function formatBarTime(time) {

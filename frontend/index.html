@@ -18,6 +18,14 @@
         </div>
 
         <div class="toolbar">
+          <label class="field compact">
+            <span>Mode</span>
+            <select id="modeSelect">
+              <option value="live" selected>Live</option>
+              <option value="date">Date</option>
+            </select>
+          </label>
+
           <label class="field">
             <span>Symbol</span>
             <input id="symbol" type="text" spellcheck="false" value="NSE:NIFTY50-INDEX" />
@@ -36,7 +44,7 @@
             </select>
           </label>
 
-          <label class="field compact">
+          <label id="rangeField" class="field compact">
             <span>Range</span>
             <select id="rangeDays">
               <option value="10">10d</option>
@@ -47,6 +55,17 @@
               <option value="1825">5y</option>
             </select>
           </label>
+
+          <div id="dateFields" class="date-fields" hidden>
+            <label class="field">
+              <span>From</span>
+              <input id="dateFrom" type="date" />
+            </label>
+            <label class="field">
+              <span>To</span>
+              <input id="dateTo" type="date" />
+            </label>
+          </div>
 
           <button id="loadBtn" class="primary">Load</button>
 
@@ -65,7 +84,7 @@
           </label>
           <label class="check"><input id="showSwingOB" type="checkbox" /> Swing OB</label>
 
-          <label class="check"><input id="autoRefresh" type="checkbox" checked /> Live</label>
+          <label id="liveLabel" class="check"><input id="autoRefresh" type="checkbox" checked /> Live</label>
 
           <button id="authBtn" class="ghost" hidden>Authenticate Fyers</button>
         </div>
@@ -77,7 +96,37 @@
         <span id="metaText" class="meta"></span>
       </section>
 
-      <main id="chart"></main>
+      <div class="chart-wrap">
+        <main id="chart"></main>
+
+        <aside id="analysis" class="analysis" hidden>
+          <div class="analysis-head">
+            <span class="analysis-title">Date mode · indicator readout</span>
+            <span id="analysisRange" class="analysis-range"></span>
+          </div>
+
+          <div class="analysis-grid">
+            <div class="stat"><span>Bars</span><b id="aBars">–</b></div>
+            <div class="stat"><span>Swing trend</span><b id="aSwingTrend">–</b></div>
+            <div class="stat"><span>Internal trend</span><b id="aInternalTrend">–</b></div>
+            <div class="stat"><span>Structures</span><b id="aStructures">–</b></div>
+            <div class="stat"><span>Breaker / Trap</span><b id="aSignals">–</b></div>
+            <div class="stat"><span>Order blocks</span><b id="aObs">–</b></div>
+            <div class="stat"><span>EQH / EQL</span><b id="aEq">–</b></div>
+            <div class="stat"><span>Swing points</span><b id="aSwingPoints">–</b></div>
+            <div class="stat wide"><span>Key levels</span><b id="aLevels">–</b></div>
+          </div>
+
+          <div class="analysis-section">
+            <span class="analysis-label">Recent signals</span>
+            <ol id="analysisEvents" class="events"></ol>
+          </div>
+
+          <p class="analysis-note">
+            Computed with hidden warmup candles; the chart shows only the selected dates.
+          </p>
+        </aside>
+      </div>
 
       <footer class="legend">
         <span><i class="swatch bull"></i> Bullish structure</span>

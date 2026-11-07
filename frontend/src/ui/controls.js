@@ -1,3 +1,6 @@
+import { isoDate } from '../api.js';
+import { shiftIsoDate } from '../range.js';
+
 const $ = (id) => document.getElementById(id);
 
 const TOGGLE_IDS = [
@@ -33,13 +36,22 @@ export function applyDefaults(config) {
       select.value = value;
     }
   }
+  if (!$('dateTo').value) {
+    $('dateTo').value = isoDate(new Date());
+  }
+  if (!$('dateFrom').value) {
+    $('dateFrom').value = shiftIsoDate($('dateTo').value, -6);
+  }
 }
 
 export function readSettings() {
   return {
+    mode: $('modeSelect').value,
     symbol: $('symbol').value.trim(),
     resolution: $('resolution').value,
     rangeDays: clampInt($('rangeDays').value, 1, 5000, 30),
+    dateFrom: $('dateFrom').value,
+    dateTo: $('dateTo').value,
     autoRefresh: $('autoRefresh').checked,
     config: {
       showInternals: $('showInternals').checked,
@@ -55,7 +67,7 @@ export function readSettings() {
   };
 }
 
-export function bindControls({ onReload, onToggle, onAuth }) {
+export function bindControls({ onReload, onToggle, onAuth, onModeChange }) {
   $('loadBtn').addEventListener('click', onReload);
   $('authBtn').addEventListener('click', onAuth);
   $('symbol').addEventListener('keydown', (event) => {
@@ -64,9 +76,30 @@ export function bindControls({ onReload, onToggle, onAuth }) {
     }
   });
 
+  for (const id of ['dateFrom', 'dateTo']) {
+    $(id).addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        onReload();
+      }
+    });
+  }
+
+  $('modeSelect').addEventListener('change', (event) => {
+    applyMode(event.target.value);
+    onModeChange?.(event.target.value);
+  });
+
   for (const id of TOGGLE_IDS) {
     $(id).addEventListener('change', onToggle);
   }
+}
+
+export function applyMode(mode) {
+  const dateMode = mode === 'date';
+  $('rangeField').hidden = dateMode;
+  $('liveLabel').hidden = dateMode;
+  $('dateFields').hidden = !dateMode;
+  $('loadBtn').textContent = dateMode ? 'Load range' : 'Load';
 }
 
 export function setStatus(text, tone = 'idle') {

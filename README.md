@@ -122,9 +122,11 @@ For a single-server setup, run `npm run build` and restart the backend; it serve
 
 | Control | Meaning |
 |---|---|
+| Mode | **Live** (range days + polling) or **Date** (exact from/to range) |
 | Symbol | Fyers symbol, e.g. `NSE:NIFTY50-INDEX`, `NSE:NIFTY25NOVFUT` |
 | TF | Candle resolution: 1m, 3m, 5m, 15m, 30m, 60m, 1D |
-| Range | Calendar days to request (Fyers limits: 100 days/request intraday, 366 daily) |
+| Range | Calendar days to request in Live mode (Fyers limits: 100 days/request intraday, 366 daily) |
+| From / To | Date-mode range; **Load range** fetches exactly these dates |
 | Internal | Internal (5-bar) structure labels |
 | Swing | Swing (50-bar, configurable) structure labels |
 | Weak H/L | Latest strong/weak high and low with trend-aware labels |
@@ -133,10 +135,23 @@ For a single-server setup, run `npm run build` and restart the backend; it serve
 | Internal OB | Show internal order blocks |
 | IOB # | Number of latest internal order blocks visible |
 | Swing OB | Show swing order blocks |
-| Live | Poll Fyers every 5s during 09:15–15:30 IST |
+| Live | Poll Fyers every 5s during 09:15–15:30 IST (Live mode only) |
 
 Toggling a checkbox re-runs the engine on the already loaded candles; **Load**
 refetches from Fyers.
+
+### Date mode
+
+Set **Mode** to **Date**, pick **From** and **To**, and click **Load range**.
+
+- The chart is rebuilt from only the selected dates; no live polling runs.
+- The backend still fetches a hidden warmup window before **From** so ATR(200),
+  swing pivots and order-block state are correct at the start of the range.
+  Warmup candles and their labels are clipped out of the chart.
+- The **indicator readout** sidebar shows the swing/internal trend, structure
+  counts (Breaker/Trap), active order blocks, EQH/EQL and swing points, key
+  levels, and the latest signals detected inside the range.
+- Works in demo mode too: `http://localhost:5173/?demo=1`, then switch to Date.
 
 ### Demo mode
 
@@ -212,9 +227,9 @@ npm test
 npm run build
 ```
 
-The test suite covers the indicators (ATR/RMA, highest/lowest, cumulative range)
-and the core engine (pivots, Breaker + order block creation, mitigation,
-drawables).
+The test suite covers the indicators (ATR/RMA, highest/lowest, cumulative range),
+the core engine (pivots, Breaker + order block creation, mitigation, drawables),
+and date-mode helpers (IST range slicing, drawable clipping, analysis counts).
 
 ## Roadmap
 
