@@ -23,6 +23,7 @@
             <select id="modeSelect">
               <option value="live" selected>Live</option>
               <option value="date">Date</option>
+              <option value="replay">Replay</option>
             </select>
           </label>
 
@@ -96,12 +97,37 @@
         <span id="metaText" class="meta"></span>
       </section>
 
+      <section id="replayBar" class="replay-bar" hidden>
+        <div class="replay-controls">
+          <button id="replayReset" class="replay-btn" title="Reset to first bar">Reset</button>
+          <button id="replayBack" class="replay-btn" title="Previous bar">Prev</button>
+          <button id="replayPlay" class="replay-btn primary" title="Play or pause">Play</button>
+          <button id="replayForward" class="replay-btn" title="Next bar">Next</button>
+          <button id="replayEnd" class="replay-btn" title="Jump to last bar">End</button>
+        </div>
+
+        <label class="field compact replay-speed">
+          <span>Speed</span>
+          <select id="replaySpeed">
+            <option value="1">1 bar/s</option>
+            <option value="2" selected>2 bar/s</option>
+            <option value="4">4 bar/s</option>
+            <option value="8">8 bar/s</option>
+            <option value="16">16 bar/s</option>
+          </select>
+        </label>
+
+        <input id="replaySlider" class="replay-slider" type="range" min="0" max="0" value="0" />
+        <span id="replayLabel" class="replay-label">–</span>
+        <label class="check"><input id="replayFollow" type="checkbox" checked /> Follow</label>
+      </section>
+
       <div class="chart-wrap">
         <main id="chart"></main>
 
         <aside id="analysis" class="analysis" hidden>
           <div class="analysis-head">
-            <span class="analysis-title">Date mode · indicator readout</span>
+            <span id="analysisTitle" class="analysis-title">Date mode · indicator readout</span>
             <span id="analysisRange" class="analysis-range"></span>
           </div>
 
@@ -122,7 +148,7 @@
             <ol id="analysisEvents" class="events"></ol>
           </div>
 
-          <p class="analysis-note">
+          <p id="analysisNote" class="analysis-note">
             Computed with hidden warmup candles; the chart shows only the selected dates.
           </p>
         </aside>

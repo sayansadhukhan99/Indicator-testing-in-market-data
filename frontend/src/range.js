@@ -54,6 +54,34 @@ export function sliceBarsToRange(bars, from, to) {
 }
 
 /**
+ * Locate the first and last bar inside the requested range. Returns absolute
+ * indices so replay can grow a slice from the start of the range.
+ */
+export function rangeIndices(bars, from, to) {
+  let startIndex = -1;
+  let endIndex = -1;
+
+  (bars || []).forEach((bar, index) => {
+    const day = barDateKey(bar.time);
+    if (day >= from && day <= to) {
+      if (startIndex === -1) startIndex = index;
+      endIndex = index;
+    }
+  });
+
+  if (startIndex === -1) {
+    return null;
+  }
+
+  return {
+    startIndex,
+    endIndex,
+    fromTime: bars[startIndex].time,
+    toTime: bars[endIndex].time,
+  };
+}
+
+/**
  * Keep only drawables that overlap the requested range, clamping lines and
  * boxes that started in the hidden warmup window. Right-edge labels are kept.
  */

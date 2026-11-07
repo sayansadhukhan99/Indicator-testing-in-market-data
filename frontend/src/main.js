@@ -11,11 +11,12 @@ import {
   rangeForDays,
 } from './api.js';
 import {
+  barDateKey,
   buildAnalysis,
   clipDrawables,
   istBusinessDay,
+  rangeIndices,
   shiftIsoDate,
-  sliceBarsToRange,
   timeKey,
   warmupDaysFor,
 } from './range.js';
@@ -25,8 +26,10 @@ import {
   bindControls,
   readSettings,
   setMeta,
+  setReplayState,
   setStatus,
   showAuthButton,
+  showReplayBar,
 } from './ui/controls.js';
 
 const DAILY_RESOLUTIONS = new Set(['D', 'W', 'M', '1D', '1W', '1M']);
@@ -90,6 +93,16 @@ const state = {
   loadedOnce: false,
   authenticated: false,
   demo: false,
+  replay: {
+    active: false,
+    index: 0,
+    start: 0,
+    end: 0,
+    playing: false,
+    timer: null,
+    speed: 2,
+    follow: true,
+  },
 };
 
 const DEMO_MODE = new URLSearchParams(window.location.search).get('demo') === '1';
@@ -101,8 +114,29 @@ async function init() {
     onReload: () => loadData({ resetView: true }),
     onToggle: () => rerun(),
     onAuth: authenticate,
-    onModeChange: () => loadData({ resetView: true }),
+    onModeChange: () => {
+      pauseReplay();
+      clearReplay();
+      loadData({ resetView: true });
+    },
+    onReplayPlay: toggleReplay,
+    onReplayBack: () => replayStep(-1),
+    onReplayForward: () => replayStep(1),
+    onReplayReset: replayReset,
+    onReplayEnd: replayEnd,
+    onReplaySeek: replaySeek,
+    onReplaySpeed: (speed) => {
+      state.replay.speed = speed;
+      if (state.replay.playing) scheduleReplayTick();
+    },
+    onReplayFollow: (follow) => {
+      state.replay.follow = follow;
+      if (follow && state.replay.active) {
+        focusReplay(state.displayBars.length, state.settings.resolution);
+      }
+    },
   });
+  bindReplayKeyboard();
   applyDefaults({});
   applyMode(readSettings().mode);
 
@@ -160,10 +194,10 @@ async function loadData({ resetView = false } = {}) {
     return;
   }
 
-  const dateMode = settings.mode === 'date';
-  if (dateMode) {
+  const rangeMode = settings.mode === 'date' || settings.mode === 'replay';
+  if (rangeMode) {
     if (!settings.dateFrom || !settings.dateTo) {
-      setStatus('Choose both a From and To date for date mode.', 'error');
+      setStatus('Choose both a From and To date for this mode.', 'error');
       return;
     }
     if (settings.dateFrom > settings.dateTo) {
@@ -175,16 +209,16 @@ async function loadData({ resetView = false } = {}) {
   state.settings = settings;
   state.mode = settings.mode;
 
-  const { from, to } = dateMode
+  const { from, to } = rangeMode
     ? { from: settings.dateFrom, to: settings.dateTo }
     : rangeForDays(settings.rangeDays);
-  const fetchFrom = dateMode
+  const fetchFrom = rangeMode
     ? shiftIsoDate(from, -warmupDaysFor(settings.resolution))
     : from;
   const label = RESOLUTION_LABELS[settings.resolution] || settings.resolution;
 
   setStatus(
-    dateMode
+    rangeMode
       ? `Loading ${settings.symbol} ${label} · ${from} → ${to}…`
       : `Loading ${settings.symbol} ${label}…`,
     'loading',
@@ -198,37 +232,42 @@ async function loadData({ resetView = false } = {}) {
       to,
     });
     const bars = normalizeBars(data.candles, settings.resolution);
-    const displayBars = dateMode ? sliceBarsToRange(bars, from, to) : bars;
-
-    if (displayBars.length === 0) {
-      setStatus(
-        dateMode
-          ? `No candles returned for ${from} → ${to}.`
-          : 'No candles returned for this symbol/range.',
-        'error',
-      );
-      return;
-    }
-
     state.bars = bars;
-    state.displayBars = displayBars;
-    state.range = dateMode
-      ? {
-          from,
-          to,
-          fromTime: displayBars[0].time,
-          toTime: displayBars[displayBars.length - 1].time,
-        }
-      : null;
-    state.signature = signatureOf(displayBars);
-    series.setData(chartData(displayBars));
-    rerun();
 
-    if (resetView || !state.loadedOnce) {
-      if (dateMode) {
-        chart.timeScale().fitContent();
+    if (rangeMode) {
+      const bounds = rangeIndices(bars, from, to);
+      if (!bounds) {
+        setStatus(`No candles returned for ${from} → ${to}.`, 'error');
+        return;
+      }
+      state.range = {
+        from,
+        to,
+        fromTime: bounds.fromTime,
+        toTime: bounds.toTime,
+      };
+
+      if (settings.mode === 'replay') {
+        setupReplay(bounds);
       } else {
-        focusRecent(displayBars.length, settings.resolution);
+        clearReplay();
+        state.displayBars = bars.slice(bounds.startIndex, bounds.endIndex + 1);
+        state.signature = signatureOf(state.displayBars);
+        series.setData(chartData(state.displayBars));
+        rerun();
+        if (resetView || !state.loadedOnce) {
+          chart.timeScale().fitContent();
+        }
+      }
+    } else {
+      clearReplay();
+      state.displayBars = bars;
+      state.range = null;
+      state.signature = signatureOf(bars);
+      series.setData(chartData(bars));
+      rerun();
+      if (resetView || !state.loadedOnce) {
+        focusRecent(bars.length, settings.resolution);
       }
     }
 
@@ -236,12 +275,21 @@ async function loadData({ resetView = false } = {}) {
     state.authenticated = true;
     showAuthButton(false);
     updateMeta();
-    setStatus(
-      dateMode
-        ? `Date mode · ${displayBars.length.toLocaleString('en-IN')} candles · ${from} → ${to}`
-        : `Loaded ${displayBars.length.toLocaleString('en-IN')} candles`,
-      'ok',
-    );
+
+    if (settings.mode === 'replay') {
+      const total = state.replay.end - state.replay.start + 1;
+      setStatus(
+        `Replay ready · ${total.toLocaleString('en-IN')} candles · ${from} → ${to}`,
+        'ok',
+      );
+    } else if (rangeMode) {
+      setStatus(
+        `Date mode · ${state.displayBars.length.toLocaleString('en-IN')} candles · ${from} → ${to}`,
+        'ok',
+      );
+    } else {
+      setStatus(`Loaded ${bars.length.toLocaleString('en-IN')} candles`, 'ok');
+    }
   } catch (error) {
     handleError(error);
   }
@@ -249,10 +297,10 @@ async function loadData({ resetView = false } = {}) {
 
 function loadDemo({ resetView = true } = {}) {
   const settings = readSettings();
-  const dateMode = settings.mode === 'date';
-  if (dateMode) {
+  const rangeMode = settings.mode === 'date' || settings.mode === 'replay';
+  if (rangeMode) {
     if (!settings.dateFrom || !settings.dateTo) {
-      setStatus('Choose both a From and To date for date mode.', 'error');
+      setStatus('Choose both a From and To date for this mode.', 'error');
       return;
     }
     if (settings.dateFrom > settings.dateTo) {
@@ -264,49 +312,69 @@ function loadDemo({ resetView = true } = {}) {
   state.settings = settings;
   state.mode = settings.mode;
 
-  const bars = makeDemoBars(1400);
-  const displayBars = dateMode
-    ? sliceBarsToRange(bars, settings.dateFrom, settings.dateTo)
-    : bars;
-
-  if (displayBars.length === 0) {
-    setStatus(
-      dateMode
-        ? `No demo candles for ${settings.dateFrom} → ${settings.dateTo}.`
-        : 'No demo candles generated.',
-      'error',
-    );
-    return;
-  }
-
+  const bars = makeDemoBars(3000);
   state.bars = bars;
-  state.displayBars = displayBars;
-  state.range = dateMode
-    ? {
-        from: settings.dateFrom,
-        to: settings.dateTo,
-        fromTime: displayBars[0].time,
-        toTime: displayBars[displayBars.length - 1].time,
-      }
-    : null;
-  state.signature = signatureOf(displayBars);
-  series.setData(chartData(displayBars));
-  rerun();
-  if (resetView || !state.loadedOnce) {
-    if (dateMode) {
-      chart.timeScale().fitContent();
+
+  if (rangeMode) {
+    const bounds = rangeIndices(bars, settings.dateFrom, settings.dateTo);
+    if (!bounds) {
+      setStatus(
+        `No demo candles for ${settings.dateFrom} → ${settings.dateTo}.`,
+        'error',
+      );
+      return;
+    }
+    state.range = {
+      from: settings.dateFrom,
+      to: settings.dateTo,
+      fromTime: bounds.fromTime,
+      toTime: bounds.toTime,
+    };
+
+    if (settings.mode === 'replay') {
+      setupReplay(bounds);
     } else {
-      focusRecent(displayBars.length, settings.resolution);
+      clearReplay();
+      state.displayBars = bars.slice(bounds.startIndex, bounds.endIndex + 1);
+      state.signature = signatureOf(state.displayBars);
+      series.setData(chartData(state.displayBars));
+      rerun();
+      if (resetView || !state.loadedOnce) {
+        chart.timeScale().fitContent();
+      }
+    }
+  } else {
+    clearReplay();
+    state.displayBars = bars;
+    state.range = null;
+    state.signature = signatureOf(bars);
+    series.setData(chartData(bars));
+    rerun();
+    if (resetView || !state.loadedOnce) {
+      focusRecent(bars.length, settings.resolution);
     }
   }
+
   state.loadedOnce = true;
   updateMeta();
-  setStatus(
-    dateMode
-      ? `Date mode (demo) · ${displayBars.length.toLocaleString('en-IN')} candles · ${settings.dateFrom} → ${settings.dateTo}`
-      : 'Demo data — remove ?demo=1 and start the backend for live Fyers data',
-    'ok',
-  );
+
+  if (settings.mode === 'replay') {
+    const total = state.replay.end - state.replay.start + 1;
+    setStatus(
+      `Replay ready (demo) · ${total.toLocaleString('en-IN')} candles · ${settings.dateFrom} → ${settings.dateTo}`,
+      'ok',
+    );
+  } else if (rangeMode) {
+    setStatus(
+      `Date mode (demo) · ${state.displayBars.length.toLocaleString('en-IN')} candles · ${settings.dateFrom} → ${settings.dateTo}`,
+      'ok',
+    );
+  } else {
+    setStatus(
+      'Demo data — remove ?demo=1 and start the backend for live Fyers data',
+      'ok',
+    );
+  }
 }
 
 function makeDemoBars(count) {
@@ -354,13 +422,23 @@ function rerun() {
     : current;
 
   const engine = new SMCEngine(state.settings.config);
-  const drawables = engine.run(state.bars);
+  const engineBars = state.replay.active
+    ? state.bars.slice(0, state.replay.index + 1)
+    : state.bars;
+  const drawables = engine.run(engineBars);
   const visible = state.range
-    ? clipDrawables(drawables, state.range.fromTime, state.range.toTime)
+    ? clipDrawables(drawables, state.range.fromTime, currentRangeTo())
     : drawables;
   primitive.setDrawables(visible);
   updateAnalysis(engine);
   updateMeta();
+}
+
+function currentRangeTo() {
+  if (state.replay.active) {
+    return state.bars[state.replay.index].time;
+  }
+  return state.range?.toTime;
 }
 
 function normalizeBars(candles, resolution) {
@@ -410,6 +488,208 @@ function focusRecent(count, resolution) {
   chart.timeScale().setVisibleLogicalRange({
     from: Math.max(0, count - visible),
     to: count + 8,
+  });
+}
+
+function focusReplay(count, resolution) {
+  const visible = Math.min(count, 180);
+  chart.timeScale().setVisibleLogicalRange({
+    from: Math.max(0, count - visible),
+    to: count + 8,
+  });
+}
+
+function setupReplay(bounds) {
+  const replay = state.replay;
+  replay.active = true;
+  replay.start = bounds.startIndex;
+  replay.end = bounds.endIndex;
+  replay.index = bounds.startIndex;
+  replay.playing = false;
+  replay.speed = state.settings?.replaySpeed ?? 2;
+  replay.follow = state.settings?.replayFollow ?? true;
+  showReplayBar(true);
+  renderReplay({ resetView: true });
+}
+
+function clearReplay() {
+  const replay = state.replay;
+  if (replay.timer) {
+    clearTimeout(replay.timer);
+    replay.timer = null;
+  }
+  replay.active = false;
+  replay.playing = false;
+  replay.index = 0;
+  replay.start = 0;
+  replay.end = 0;
+  showReplayBar(false);
+}
+
+function renderReplay({ resetView = false } = {}) {
+  const replay = state.replay;
+  if (!replay.active) {
+    return;
+  }
+
+  replay.index = Math.min(replay.end, Math.max(replay.start, replay.index));
+  state.displayBars = state.bars.slice(replay.start, replay.index + 1);
+  state.signature = signatureOf(state.displayBars);
+  series.setData(chartData(state.displayBars));
+  rerun();
+
+  if (resetView || replay.follow) {
+    focusReplay(state.displayBars.length, state.settings.resolution);
+  }
+
+  renderReplayControls();
+}
+
+function renderReplayControls() {
+  const replay = state.replay;
+  if (!replay.active) {
+    return;
+  }
+  const current = state.bars[replay.index];
+  setReplayState({
+    position: replay.index - replay.start,
+    total: replay.end - replay.start,
+    label: `${(replay.index - replay.start + 1).toLocaleString('en-IN')} / ${(replay.end - replay.start + 1).toLocaleString('en-IN')} · ${formatBarTime(current.time)}`,
+    playing: replay.playing,
+    canBack: replay.index > replay.start,
+    canForward: replay.index < replay.end,
+  });
+}
+
+function replayStep(delta) {
+  const replay = state.replay;
+  if (!replay.active) {
+    return;
+  }
+  pauseReplay();
+  const next = Math.min(replay.end, Math.max(replay.start, replay.index + delta));
+  if (next === replay.index) {
+    return;
+  }
+  replay.index = next;
+  renderReplay();
+}
+
+function replaySeek(position) {
+  const replay = state.replay;
+  if (!replay.active) {
+    return;
+  }
+  pauseReplay();
+  replay.index = replay.start + Number(position);
+  renderReplay();
+}
+
+function replayReset() {
+  const replay = state.replay;
+  if (!replay.active) {
+    return;
+  }
+  pauseReplay();
+  replay.index = replay.start;
+  renderReplay({ resetView: true });
+}
+
+function replayEnd() {
+  const replay = state.replay;
+  if (!replay.active) {
+    return;
+  }
+  pauseReplay();
+  replay.index = replay.end;
+  renderReplay({ resetView: true });
+}
+
+function toggleReplay() {
+  if (state.replay.playing) {
+    pauseReplay();
+  } else {
+    playReplay();
+  }
+}
+
+function playReplay() {
+  const replay = state.replay;
+  if (!replay.active) {
+    return;
+  }
+  if (replay.index >= replay.end) {
+    replay.index = replay.start;
+    renderReplay({ resetView: true });
+  }
+  replay.playing = true;
+  scheduleReplayTick();
+  renderReplayControls();
+}
+
+function pauseReplay() {
+  const replay = state.replay;
+  if (replay.timer) {
+    clearTimeout(replay.timer);
+    replay.timer = null;
+  }
+  if (replay.playing) {
+    replay.playing = false;
+    renderReplayControls();
+  }
+}
+
+function scheduleReplayTick() {
+  const replay = state.replay;
+  if (replay.timer) {
+    clearTimeout(replay.timer);
+  }
+  const delay = Math.max(50, Math.round(1000 / replay.speed));
+  replay.timer = setTimeout(() => {
+    replay.timer = null;
+    if (!replay.playing) {
+      return;
+    }
+    if (replay.index >= replay.end) {
+      pauseReplay();
+      return;
+    }
+    replay.index += 1;
+    renderReplay();
+    if (replay.index >= replay.end) {
+      pauseReplay();
+      return;
+    }
+    scheduleReplayTick();
+  }, delay);
+}
+
+function bindReplayKeyboard() {
+  document.addEventListener('keydown', (event) => {
+    if (!state.replay.active) {
+      return;
+    }
+    const tag = event.target?.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') {
+      return;
+    }
+
+    if (event.key === ' ') {
+      event.preventDefault();
+      toggleReplay();
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      replayStep(1);
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      replayStep(-1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      replayReset();
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      replayEnd();
+    }
   });
 }
 
@@ -499,7 +779,12 @@ function updateMeta() {
     maximumFractionDigits: 2,
   });
   const resolution = state.settings.resolution;
-  const range = state.range ? ` · ${state.range.from} → ${state.range.to}` : '';
+  let range = '';
+  if (state.replay.active) {
+    range = ` · ${state.range.from} → ${barDateKey(last.time)}`;
+  } else if (state.range) {
+    range = ` · ${state.range.from} → ${state.range.to}`;
+  }
   setMeta(
     `${bars.length.toLocaleString('en-IN')} bars · ${
       RESOLUTION_LABELS[resolution] || resolution
@@ -509,20 +794,36 @@ function updateMeta() {
 
 function updateAnalysis(engine) {
   const panel = document.getElementById('analysis');
-  if (!state.range || state.settings?.mode !== 'date') {
+  const mode = state.settings?.mode;
+  const rangeMode = mode === 'date' || mode === 'replay';
+  if (!state.range || !rangeMode) {
     panel.hidden = true;
     return;
   }
   panel.hidden = false;
 
+  const replay = state.replay.active;
+  const toTime = replay ? state.bars[state.replay.index].time : state.range.toTime;
   const analysis = buildAnalysis(
     engine,
     state.range.fromTime,
-    state.range.toTime,
+    toTime,
     state.displayBars.length,
   );
 
-  setText('analysisRange', `${state.range.from} → ${state.range.to}`);
+  setText('analysisTitle', replay ? 'Replay · indicator readout' : 'Date mode · indicator readout');
+  setText(
+    'analysisRange',
+    replay
+      ? `${state.range.from} → ${barDateKey(toTime)}`
+      : `${state.range.from} → ${state.range.to}`,
+  );
+  setText(
+    'analysisNote',
+    replay
+      ? `Replaying bar ${(state.replay.index - state.replay.start + 1).toLocaleString('en-IN')} of ${(state.replay.end - state.replay.start + 1).toLocaleString('en-IN')}. Levels are recomputed using only candles up to the current bar.`
+      : 'Computed with hidden warmup candles; the chart shows only the selected dates.',
+  );
   setText('aBars', analysis.bars.toLocaleString('en-IN'));
   setText('aSwingTrend', trendLabel(analysis.swingTrend));
   setText('aInternalTrend', trendLabel(analysis.internalTrend));

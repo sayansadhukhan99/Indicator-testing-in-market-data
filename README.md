@@ -122,11 +122,11 @@ For a single-server setup, run `npm run build` and restart the backend; it serve
 
 | Control | Meaning |
 |---|---|
-| Mode | **Live** (range days + polling) or **Date** (exact from/to range) |
+| Mode | **Live** (range days + polling), **Date** (exact from/to range) or **Replay** (step through a date range bar by bar) |
 | Symbol | Fyers symbol, e.g. `NSE:NIFTY50-INDEX`, `NSE:NIFTY25NOVFUT` |
 | TF | Candle resolution: 1m, 3m, 5m, 15m, 30m, 60m, 1D |
 | Range | Calendar days to request in Live mode (Fyers limits: 100 days/request intraday, 366 daily) |
-| From / To | Date-mode range; **Load range** fetches exactly these dates |
+| From / To | Date/Replay range; **Load range** / **Load replay** fetches exactly these dates |
 | Internal | Internal (5-bar) structure labels |
 | Swing | Swing (50-bar, configurable) structure labels |
 | Weak H/L | Latest strong/weak high and low with trend-aware labels |
@@ -153,9 +153,29 @@ Set **Mode** to **Date**, pick **From** and **To**, and click **Load range**.
   levels, and the latest signals detected inside the range.
 - Works in demo mode too: `http://localhost:5173/?demo=1`, then switch to Date.
 
+### Replay mode
+
+Set **Mode** to **Replay**, pick **From** and **To**, and click **Load replay**.
+Replay starts on the first bar of the range and the chart grows one candle at a
+time.
+
+- The indicator is recomputed on every step using only the candles up to the
+  current bar, so structures, order blocks, EQH/EQL and key levels evolve exactly
+  as they would have in real time.
+- The hidden warmup window before **From** is always included so ATR(200) and
+  swing state are valid from the first replayed bar.
+- **Reset / Prev / Play / Next / End** control the playhead; **Speed** sets
+  1–16 bars/second; the slider seeks to any bar; **Follow** keeps the view pinned
+  to the latest bar.
+- Keyboard: `Space` play/pause, `←`/`→` step, `Home` reset, `End` jump to the
+  last bar (ignored while typing in an input).
+- The sidebar switches to a live **Replay · indicator readout** that updates with
+  each bar.
+- Works in demo mode too: `http://localhost:5173/?demo=1`, then switch to Replay.
+
 ### Demo mode
 
-Open `http://localhost:5173/?demo=1` to render 1,400 synthetic 5-minute candles
+Open `http://localhost:5173/?demo=1` to render 3,000 synthetic 5-minute candles
 without the backend or a Fyers account. This is handy for checking the
 structure/order-block rendering before credentials are configured.
 

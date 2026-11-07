@@ -3,6 +3,7 @@ import { BEARISH, BULLISH } from '../src/smc/config.js';
 import {
   buildAnalysis,
   clipDrawables,
+  rangeIndices,
   shiftIsoDate,
   sliceBarsToRange,
   timeKey,
@@ -33,6 +34,24 @@ describe('date range helpers', () => {
     const sliced = sliceBarsToRange(bars, '2026-11-07', '2026-11-07');
     expect(sliced).toHaveLength(1);
     expect(sliced[0].time).toBe(bars[1].time);
+  });
+
+  it('locates absolute range bounds for replay', () => {
+    const bars = [
+      bar(Date.UTC(2026, 10, 5, 18, 30) / 1000), // 2026-11-06 IST
+      bar(Date.UTC(2026, 10, 6, 18, 30) / 1000), // 2026-11-07 IST
+      bar(Date.UTC(2026, 10, 7, 18, 30) / 1000), // 2026-11-08 IST
+      bar(Date.UTC(2026, 10, 8, 18, 30) / 1000), // 2026-11-09 IST
+    ];
+
+    const bounds = rangeIndices(bars, '2026-11-07', '2026-11-08');
+    expect(bounds).toEqual({
+      startIndex: 1,
+      endIndex: 2,
+      fromTime: bars[1].time,
+      toTime: bars[2].time,
+    });
+    expect(rangeIndices(bars, '2026-11-20', '2026-11-21')).toBeNull();
   });
 
   it('clips drawables to the visible range', () => {

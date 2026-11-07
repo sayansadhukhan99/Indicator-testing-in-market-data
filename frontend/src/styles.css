@@ -229,6 +229,50 @@ button.ghost {
   font-variant-numeric: tabular-nums;
 }
 
+.replay-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.replay-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.replay-btn {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+.replay-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.replay-speed {
+  width: 96px;
+}
+
+.replay-slider {
+  flex: 1;
+  min-width: 140px;
+  accent-color: var(--accent);
+}
+
+.replay-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .chart-wrap {
   display: flex;
   flex: 1;

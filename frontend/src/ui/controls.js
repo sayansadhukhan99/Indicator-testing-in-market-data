@@ -53,6 +53,8 @@ export function readSettings() {
     dateFrom: $('dateFrom').value,
     dateTo: $('dateTo').value,
     autoRefresh: $('autoRefresh').checked,
+    replaySpeed: clampInt($('replaySpeed').value, 1, 16, 2),
+    replayFollow: $('replayFollow').checked,
     config: {
       showInternals: $('showInternals').checked,
       showSwing: $('showSwing').checked,
@@ -67,7 +69,20 @@ export function readSettings() {
   };
 }
 
-export function bindControls({ onReload, onToggle, onAuth, onModeChange }) {
+export function bindControls({
+  onReload,
+  onToggle,
+  onAuth,
+  onModeChange,
+  onReplayPlay,
+  onReplayBack,
+  onReplayForward,
+  onReplayReset,
+  onReplayEnd,
+  onReplaySeek,
+  onReplaySpeed,
+  onReplayFollow,
+}) {
   $('loadBtn').addEventListener('click', onReload);
   $('authBtn').addEventListener('click', onAuth);
   $('symbol').addEventListener('keydown', (event) => {
@@ -92,14 +107,58 @@ export function bindControls({ onReload, onToggle, onAuth, onModeChange }) {
   for (const id of TOGGLE_IDS) {
     $(id).addEventListener('change', onToggle);
   }
+
+  $('replayPlay').addEventListener('click', () => onReplayPlay?.());
+  $('replayBack').addEventListener('click', () => onReplayBack?.());
+  $('replayForward').addEventListener('click', () => onReplayForward?.());
+  $('replayReset').addEventListener('click', () => onReplayReset?.());
+  $('replayEnd').addEventListener('click', () => onReplayEnd?.());
+  $('replaySlider').addEventListener('input', (event) =>
+    onReplaySeek?.(Number(event.target.value)),
+  );
+  $('replaySpeed').addEventListener('change', (event) =>
+    onReplaySpeed?.(Number(event.target.value)),
+  );
+  $('replayFollow').addEventListener('change', (event) =>
+    onReplayFollow?.(event.target.checked),
+  );
 }
 
 export function applyMode(mode) {
-  const dateMode = mode === 'date';
-  $('rangeField').hidden = dateMode;
-  $('liveLabel').hidden = dateMode;
-  $('dateFields').hidden = !dateMode;
-  $('loadBtn').textContent = dateMode ? 'Load range' : 'Load';
+  const rangeMode = mode === 'date' || mode === 'replay';
+  $('rangeField').hidden = rangeMode;
+  $('liveLabel').hidden = rangeMode;
+  $('dateFields').hidden = !rangeMode;
+  $('loadBtn').textContent =
+    mode === 'replay' ? 'Load replay' : mode === 'date' ? 'Load range' : 'Load';
+  if (mode !== 'replay') {
+    showReplayBar(false);
+  }
+}
+
+export function showReplayBar(visible) {
+  $('replayBar').hidden = !visible;
+}
+
+export function setReplayState({
+  position = 0,
+  total = 0,
+  label = '–',
+  playing = false,
+  canBack = false,
+  canForward = false,
+} = {}) {
+  const slider = $('replaySlider');
+  slider.min = '0';
+  slider.max = String(Math.max(0, total));
+  slider.value = String(Math.min(Math.max(0, position), Math.max(0, total)));
+
+  $('replayLabel').textContent = label;
+  $('replayPlay').textContent = playing ? 'Pause' : 'Play';
+  $('replayBack').disabled = !canBack;
+  $('replayForward').disabled = !canForward;
+  $('replayReset').disabled = !canBack;
+  $('replayEnd').disabled = !canForward;
 }
 
 export function setStatus(text, tone = 'idle') {
