@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>Nifty Smart Money Concepts</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <div>
+            <h1>Nifty SMC</h1>
+            <p>Smart Money Concepts · Fyers + Lightweight Charts</p>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <label class="field">
+            <span>Symbol</span>
+            <input id="symbol" type="text" spellcheck="false" value="NSE:NIFTY50-INDEX" />
+          </label>
+
+          <label class="field compact">
+            <span>TF</span>
+            <select id="resolution">
+              <option value="1">1m</option>
+              <option value="3">3m</option>
+              <option value="5" selected>5m</option>
+              <option value="15">15m</option>
+              <option value="30">30m</option>
+              <option value="60">60m</option>
+              <option value="D">1D</option>
+            </select>
+          </label>
+
+          <label class="field compact">
+            <span>Range</span>
+            <select id="rangeDays">
+              <option value="10">10d</option>
+              <option value="30" selected>30d</option>
+              <option value="90">90d</option>
+              <option value="180">180d</option>
+              <option value="365">1y</option>
+              <option value="1825">5y</option>
+            </select>
+          </label>
+
+          <button id="loadBtn" class="primary">Load</button>
+
+          <div class="divider"></div>
+
+          <label class="check"><input id="showInternals" type="checkbox" checked /> Internal</label>
+          <label class="check"><input id="showSwing" type="checkbox" checked /> Swing</label>
+          <label class="check"><input id="showWeak" type="checkbox" checked /> Weak H/L</label>
+          <label class="check"><input id="showEQ" type="checkbox" checked /> EQH/EQL</label>
+          <label class="check"><input id="showSwings" type="checkbox" /> HH/LL</label>
+
+          <label class="check"><input id="showInternalOB" type="checkbox" checked /> Internal OB</label>
+          <label class="field compact">
+            <span>IOB #</span>
+            <input id="iobSize" type="number" min="1" max="20" value="5" />
+          </label>
+          <label class="check"><input id="showSwingOB" type="checkbox" /> Swing OB</label>
+
+          <label class="check"><input id="autoRefresh" type="checkbox" checked /> Live</label>
+
+          <button id="authBtn" class="ghost" hidden>Authenticate Fyers</button>
+        </div>
+      </header>
+
+      <section class="statusbar">
+        <span id="statusDot" class="dot"></span>
+        <span id="statusText">Starting…</span>
+        <span id="metaText" class="meta"></span>
+      </section>
+
+      <main id="chart"></main>
+
+      <footer class="legend">
+        <span><i class="swatch bull"></i> Bullish structure</span>
+        <span><i class="swatch bear"></i> Bearish structure</span>
+        <span><i class="swatch ob-int"></i> Internal order block</span>
+        <span><i class="swatch ob-swing"></i> Swing order block</span>
+        <span class="muted">Breaker = BOS · Trap = CHoCH</span>
+      </footer>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
