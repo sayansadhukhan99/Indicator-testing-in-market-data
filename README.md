@@ -19,6 +19,8 @@ faithful JavaScript port of the LuxAlgo **Smart Money Concepts** Pine script on
 - Renders boxes, dashed structure levels and labels with a custom Lightweight
   Charts series primitive (the library has no native box annotation API).
 - Live-polls during NSE market hours and re-runs the engine on the latest bars.
+- Scores active liquidity levels with HTF-conditioned breakout/reversal
+  probabilities (hybrid historical base rate + transparent heuristic).
 
 ## Architecture
 
@@ -132,13 +134,35 @@ For a single-server setup, run `npm run build` and restart the backend; it serve
 | Weak H/L | Latest strong/weak high and low with trend-aware labels |
 | EQH/EQL | Equal highs/lows detection |
 | HH/LL | Swing point labels |
+| Alligator | Williams Alligator (13/8/5 SMMAs of median price, offset 8/5/3) |
+| CPR | Central Pivot Range (P, TC and BC from the previous session) |
 | Internal OB | Show internal order blocks |
 | IOB # | Number of latest internal order blocks visible |
 | Swing OB | Show swing order blocks |
+| Probabilities | Show/hide the liquidity probability table and chart badges |
+| Horizon | Calibration horizon in bars (10 / 20 / 40) |
 | Live | Poll Fyers every 5s during 09:15–15:30 IST (Live mode only) |
+| + Level | Enter level-drawing mode; click the chart to place horizontal levels |
+| Clear levels | Remove all saved horizontal levels for the current symbol |
 
 Toggling a checkbox re-runs the engine on the already loaded candles; **Load**
 refetches from Fyers.
+
+### Horizontal levels
+
+- Click **+ Level**, then click the chart to place a horizontal level at that
+  price. Press `Esc` (or click **+ Level** again) to leave drawing mode.
+- Drag an existing level up/down to move it; the price updates live. Dragging
+  the price scale zooms the chart and does not move levels.
+- `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`) undo and redo level changes,
+  including a completed drag as a single step.
+- Each level can be switched between **Blue** and **Yellow**, and between
+  **Solid** and **Dotted**. Multiple levels may share the same color.
+- The floating **Levels** panel lists the current symbol's levels. Click `x` to
+  delete one, or **Clear levels** to remove them all.
+- Levels are saved in `localStorage` per symbol, so switching symbols shows that
+  symbol's own levels. `NSE:NIFTY50-INDEX` starts with the saved blue/yellow
+  level set from the marked-up chart.
 
 ### Date mode
 
@@ -173,11 +197,38 @@ time.
   each bar.
 - Works in demo mode too: `http://localhost:5173/?demo=1`, then switch to Replay.
 
+### Liquidity probabilities
+
+With **Probabilities** enabled, every active level (swing/internal pivots,
+EQH/EQL, active internal/swing order blocks and trailing weak highs/lows) gets a
+conditional **break** and **reversal** probability for the selected **Horizon**.
+
+- The question is: *if price reaches this level, what usually happens next?* It
+  is not a forecast that price will reach the level.
+- A level is **touched** within `0.15 x ATR`; a **break** needs a close beyond
+  the level by `0.25 x ATR`; a **reversal** needs price to travel `1.0 x ATR`
+  back through the level. If both happen inside the horizon, the event is
+  treated as ambiguous and excluded.
+- The historical rate is conditioned on the level type, side and current HTF
+  alignment (with/against/mixed). Small samples are shrunk toward a heuristic
+  prior: `(breaks + 20 x heuristic) / (n + 20)`.
+- The heuristic blends HTF alignment, level type, level age and swing momentum.
+- HTF context uses daily and 1h candles (`0.6 x daily + 0.4 x hourly`). A daily
+  bar only becomes available after it closes; a 1h bar only after its close.
+  Calibration outcomes are also filtered to those completed before the current
+  chart bar, so replay has no lookahead.
+- The sidebar table shows level, break %, reject %, sample size `n` and HTF
+  alignment. Chart badges show the same probabilities near the level; far-away
+  levels are omitted from the chart to avoid clutter but remain in the table.
+- Confidence is **low** below 15 samples, **medium** at 15-39 and **high** at 40+.
+- Works in demo mode too: `http://localhost:5173/?demo=1`.
+
 ### Demo mode
 
-Open `http://localhost:5173/?demo=1` to render 3,000 synthetic 5-minute candles
-without the backend or a Fyers account. This is handy for checking the
-structure/order-block rendering before credentials are configured.
+Open `http://localhost:5173/?demo=1` to render 6,000 synthetic 5-minute candles
+plus synthetic daily/1h context without the backend or a Fyers account. This is
+handy for checking structure, order-block and probability rendering before
+credentials are configured.
 
 ## Pine → JavaScript port
 
@@ -249,7 +300,9 @@ npm run build
 
 The test suite covers the indicators (ATR/RMA, highest/lowest, cumulative range),
 the core engine (pivots, Breaker + order block creation, mitigation, drawables),
-and date-mode helpers (IST range slicing, drawable clipping, analysis counts).
+date-mode helpers (IST range slicing, drawable clipping, analysis counts), and
+the probability model (causal HTF gating, level extraction, calibration events,
+no-lookahead filtering, hybrid scoring and chart labels).
 
 ## Roadmap
 

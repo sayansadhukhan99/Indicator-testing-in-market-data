@@ -70,6 +70,8 @@ export class SMCPrimitive {
       context.save();
       context.lineJoin = 'round';
       context.lineCap = 'round';
+      let lastRightY = -Infinity;
+      let lastProbabilityY = -Infinity;
 
       for (const drawable of this._drawables) {
         if (drawable.layer !== layer) {
@@ -122,23 +124,73 @@ export class SMCPrimitive {
           const x = drawable.xRight
             ? mediaSize.width - 8
             : timeToX(drawable.time);
-          const y = priceToY(drawable.price);
+          let y = priceToY(drawable.price);
 
           if (x == null || y == null) {
             continue;
           }
 
-          context.font = `${drawable.weight || 500} ${drawable.fontSize || 11}px Inter, ui-sans-serif, system-ui, sans-serif`;
-          context.fillStyle = drawable.color;
+          if (drawable.xRight && (y < -16 || y > mediaSize.height + 16)) {
+            continue;
+          }
+
+          if (drawable.xRight) {
+            const last = drawable.probability ? lastProbabilityY : lastRightY;
+            if (y - last < 14) {
+              y = last + 14;
+            }
+            if (drawable.probability) {
+              lastProbabilityY = y;
+            } else {
+              lastRightY = y;
+            }
+          }
+
+          const fontSize = drawable.fontSize || 11;
+          const textX = x + (drawable.offsetX || 0);
+          const textY = y + (drawable.offsetY || 0);
+
+          context.font = `${drawable.weight || 500} ${fontSize}px Inter, ui-sans-serif, system-ui, sans-serif`;
           context.textAlign = drawable.align || 'center';
           context.textBaseline = drawable.baseline || 'middle';
-          context.shadowColor = 'rgba(0, 0, 0, 0.75)';
-          context.shadowBlur = 3;
-          context.fillText(
-            drawable.text,
-            x + (drawable.offsetX || 0),
-            y + (drawable.offsetY || 0),
-          );
+
+          if (drawable.background) {
+            const metrics = context.measureText(drawable.text);
+            const padX = drawable.paddingX ?? 4;
+            const padY = drawable.paddingY ?? 2;
+            const width = metrics.width + padX * 2;
+            const height = fontSize + padY * 2;
+            let boxX;
+            if (context.textAlign === 'right') {
+              boxX = textX - metrics.width - padX;
+            } else if (context.textAlign === 'center') {
+              boxX = textX - metrics.width / 2 - padX;
+            } else {
+              boxX = textX - padX;
+            }
+            let boxY;
+            if (context.textBaseline === 'bottom') {
+              boxY = textY - fontSize - padY;
+            } else if (context.textBaseline === 'top') {
+              boxY = textY - padY;
+            } else {
+              boxY = textY - fontSize / 2 - padY;
+            }
+
+            roundedRect(context, boxX, boxY, width, height, drawable.radius ?? 4);
+            context.fillStyle = drawable.background;
+            context.fill();
+            if (drawable.border) {
+              context.strokeStyle = drawable.border;
+              context.lineWidth = 1;
+              context.stroke();
+            }
+          }
+
+          context.fillStyle = drawable.color;
+          context.shadowColor = drawable.background ? 'transparent' : 'rgba(0, 0, 0, 0.75)';
+          context.shadowBlur = drawable.background ? 0 : 3;
+          context.fillText(drawable.text, textX, textY);
           context.shadowBlur = 0;
         }
       }
@@ -146,6 +198,21 @@ export class SMCPrimitive {
       context.restore();
     });
   }
+}
+
+function roundedRect(context, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.lineTo(x + width - r, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + r);
+  context.lineTo(x + width, y + height - r);
+  context.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  context.lineTo(x + r, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - r);
+  context.lineTo(x, y + r);
+  context.quadraticCurveTo(x, y, x + r, y);
+  context.closePath();
 }
 
 function dashPattern(style) {

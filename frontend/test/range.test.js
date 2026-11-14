@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { BEARISH, BULLISH } from '../src/smc/config.js';
 import {
   buildAnalysis,
+  calibrationDaysFor,
   clipDrawables,
+  earliestHistoryDate,
+  firstIndexFromDate,
+  historyLimitDays,
   rangeIndices,
   shiftIsoDate,
   sliceBarsToRange,
@@ -22,6 +26,32 @@ describe('date range helpers', () => {
     expect(warmupDaysFor('D')).toBe(400);
     expect(warmupDaysFor('5')).toBeGreaterThan(0);
     expect(warmupDaysFor('60')).toBeGreaterThan(warmupDaysFor('5'));
+  });
+
+  it('sizes probability calibration history by timeframe', () => {
+    expect(calibrationDaysFor('1')).toBe(40);
+    expect(calibrationDaysFor('5')).toBe(180);
+    expect(calibrationDaysFor('D')).toBe(1825);
+  });
+
+  it('clamps warmup starts to the Fyers plan historical limits', () => {
+    expect(historyLimitDays('5')).toBe(364);
+    expect(historyLimitDays('60')).toBe(364);
+    expect(historyLimitDays('D')).toBe(1824);
+    expect(earliestHistoryDate('5', '2026-11-08')).toBe('2025-11-09');
+    expect(earliestHistoryDate('D', '2026-11-08')).toBe('2021-11-10');
+  });
+
+  it('finds the first bar on or after a date', () => {
+    const bars = [
+      bar(Date.UTC(2026, 10, 5, 18, 30) / 1000),
+      bar(Date.UTC(2026, 10, 6, 18, 30) / 1000),
+      bar(Date.UTC(2026, 10, 7, 18, 30) / 1000),
+    ];
+
+    expect(firstIndexFromDate(bars, '2026-11-07')).toBe(1);
+    expect(firstIndexFromDate(bars, '2026-11-06')).toBe(0);
+    expect(firstIndexFromDate(bars, '2026-11-09')).toBe(-1);
   });
 
   it('slices intraday bars by IST business day', () => {

@@ -48,6 +48,33 @@ export function atrSeries(bars, length) {
   return out;
 }
 
+/**
+ * Pine `ta.ema(source, length)`.
+ * Seeded with the SMA of the first `length` values, then
+ * `alpha = 2 / (length + 1)`. Returns null during warmup.
+ */
+export function emaSeries(values, length) {
+  const n = values.length;
+  const out = new Array(n).fill(null);
+  if (length <= 0 || n < length) {
+    return out;
+  }
+
+  let sum = 0;
+  for (let i = 0; i < length; i += 1) {
+    sum += Number(values[i]);
+  }
+
+  const alpha = 2 / (length + 1);
+  let previous = sum / length;
+  out[length - 1] = previous;
+  for (let i = length; i < n; i += 1) {
+    previous = alpha * Number(values[i]) + (1 - alpha) * previous;
+    out[i] = previous;
+  }
+  return out;
+}
+
 /** Pine `ta.cum(ta.tr) / bar_index`. */
 export function cumulativeMeanRange(bars) {
   const n = bars.length;

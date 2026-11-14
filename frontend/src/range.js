@@ -46,11 +46,53 @@ export function warmupDaysFor(resolution) {
   return Math.ceil((tradingDays * 7) / 5) + 5;
 }
 
+// Fyers Standard plan limits, kept one day inside the boundary to absorb
+// timezone differences between the browser and Fyers' servers.
+export const INTRADAY_HISTORY_DAYS = 364;
+export const DAILY_HISTORY_DAYS = 1824;
+
+export function historyLimitDays(resolution) {
+  if (['D', 'W', 'M', '1D', '1W', '1M'].includes(resolution)) {
+    return DAILY_HISTORY_DAYS;
+  }
+  return INTRADAY_HISTORY_DAYS;
+}
+
+export function todayIsoDate(now = new Date()) {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function earliestHistoryDate(resolution, today = todayIsoDate()) {
+  return shiftIsoDate(today, -historyLimitDays(resolution));
+}
+
 export function sliceBarsToRange(bars, from, to) {
   return (bars || []).filter((bar) => {
     const day = barDateKey(bar.time);
     return day >= from && day <= to;
   });
+}
+
+export function calibrationDaysFor(resolution) {
+  if (resolution === 'D') return 1825;
+  if (resolution === 'W' || resolution === 'M') return 3650;
+  const minutes = Number(resolution);
+  if (!Number.isFinite(minutes) || minutes <= 0) return 180;
+  const barsPerDay = 375 / minutes;
+  const targetBars = 15_000;
+  return Math.max(30, Math.min(180, Math.floor(targetBars / barsPerDay)));
+}
+
+export function firstIndexFromDate(bars, from) {
+  for (let i = 0; i < (bars || []).length; i += 1) {
+    if (barDateKey(bars[i].time) >= from) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 /**

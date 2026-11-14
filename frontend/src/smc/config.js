@@ -29,6 +29,8 @@ export const DEFAULT_CONFIG = {
   showSwing: true,
   showSwings: false,
   showHighLowSwings: true,
+  showAlligator: true,
+  showCpr: true,
 
   showInternalOrderBlocks: true,
   internalOrderBlocksSize: 5,
@@ -56,4 +58,28 @@ export const DEFAULT_CONFIG = {
   internalBearColor: COLORS.red,
   swingBullColor: COLORS.green,
   swingBearColor: COLORS.red,
+
+  // Probability model (historical base rates conditioned on HTF trend).
+  showProbabilities: true,
+  probabilityHorizon: 20,
+  probabilityTouchAtr: 0.15,
+  probabilityBreakAtr: 0.25,
+  probabilityTargetAtr: 1.0,
+  probabilityShrinkage: 20,
+  probabilityMinSamples: 15,
+  probabilityLabelMaxAtr: 12,
+  probabilityHeuristic: {
+    alignment: 0.9,
+    type: 0.35,
+    freshness: 0.1,
+    momentum: 0.2,
+  },
+  probabilityTypeBias: {
+    swing: 0.05,
+    internal: 0,
+    equal: -0.25,
+    'ob-internal': -0.15,
+    'ob-swing': -0.15,
+    trailing: 0.1,
+  },
 };

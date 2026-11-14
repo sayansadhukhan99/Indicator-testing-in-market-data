@@ -9,9 +9,12 @@ const TOGGLE_IDS = [
   'showWeak',
   'showEQ',
   'showSwings',
+  'showAlligator',
+  'showCpr',
   'showInternalOB',
   'showSwingOB',
   'iobSize',
+  'showProbabilities',
 ];
 
 function clampInt(value, min, max, fallback) {
@@ -55,16 +58,22 @@ export function readSettings() {
     autoRefresh: $('autoRefresh').checked,
     replaySpeed: clampInt($('replaySpeed').value, 1, 16, 2),
     replayFollow: $('replayFollow').checked,
+    showProbabilities: $('showProbabilities').checked,
+    probabilityHorizon: clampInt($('probHorizon').value, 5, 200, 20),
     config: {
       showInternals: $('showInternals').checked,
       showSwing: $('showSwing').checked,
       showHighLowSwings: $('showWeak').checked,
       showEqualHighLows: $('showEQ').checked,
       showSwings: $('showSwings').checked,
+      showAlligator: $('showAlligator').checked,
+      showCpr: $('showCpr').checked,
       showInternalOrderBlocks: $('showInternalOB').checked,
       internalOrderBlocksSize: clampInt($('iobSize').value, 1, 20, 5),
       showSwingOrderBlocks: $('showSwingOB').checked,
       swingOrderBlocksSize: 5,
+      showProbabilities: $('showProbabilities').checked,
+      probabilityHorizon: clampInt($('probHorizon').value, 5, 200, 20),
     },
   };
 }
@@ -108,6 +117,8 @@ export function bindControls({
     $(id).addEventListener('change', onToggle);
   }
 
+  $('probHorizon').addEventListener('change', onToggle);
+
   $('replayPlay').addEventListener('click', () => onReplayPlay?.());
   $('replayBack').addEventListener('click', () => onReplayBack?.());
   $('replayForward').addEventListener('click', () => onReplayForward?.());
@@ -138,6 +149,10 @@ export function applyMode(mode) {
 
 export function showReplayBar(visible) {
   $('replayBar').hidden = !visible;
+}
+
+export function setReplayFollow(checked) {
+  $('replayFollow').checked = checked;
 }
 
 export function setReplayState({

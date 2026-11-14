@@ -64,6 +64,11 @@ class FyersService:
     DAILY_MAX_DAYS = 366
     DAILY_RESOLUTIONS = {"D", "1D", "W", "1W", "M", "1M"}
 
+    # Fyers Standard plan historical limits (days). One day of headroom keeps a
+    # timezone difference between this host and Fyers from tripping the limit.
+    INTRADAY_PLAN_DAYS = 364
+    DAILY_PLAN_DAYS = 1824
+
     def __init__(self, settings: Settings, token_store: TokenStore) -> None:
         self.settings = settings
         self.tokens = token_store
@@ -201,6 +206,14 @@ class FyersService:
         if range_from > range_to:
             raise FyersError("range_from must be before range_to", status_code=400)
 
+        earliest = date.today() - timedelta(days=self.plan_limit_days(resolution))
+        if range_to < earliest:
+            raise FyersError(self._plan_limit_message(resolution, earliest), status_code=400)
+        if range_from < earliest:
+            # Warmup/calibration lead-in can reach past the plan's window; clamp
+            # it instead of failing the whole request.
+            range_from = earliest
+
         client = self._get_client()
         chunk_days = (
             self.DAILY_MAX_DAYS
@@ -222,9 +235,15 @@ class FyersService:
 
             response = client.history(payload)
             if not isinstance(response, dict) or response.get("s") == "error":
-                message = response.get("message") if isinstance(response, dict) else str(response)
                 code = response.get("code") if isinstance(response, dict) else None
-                raise FyersError(f"Fyers history error ({code}): {message}", status_code=502)
+                message = response.get("message") if isinstance(response, dict) else str(response)
+                details = response.get("data") if isinstance(response, dict) else None
+                if isinstance(details, dict) and details:
+                    message = "; ".join(str(value) for value in details.values() if value)
+                # -50 is Fyers' "Invalid input" (e.g. plan historical limit),
+                # which is a caller/range problem rather than a gateway failure.
+                status_code = 400 if code == -50 else 502
+                raise FyersError(f"Fyers history error ({code}): {message}", status_code=status_code)
 
             for raw in response.get("candles") or []:
                 candle = self._parse_candle(raw)
@@ -235,6 +254,26 @@ class FyersService:
             time.sleep(0.25)
 
         return [merged[key] for key in sorted(merged)]
+
+    @classmethod
+    def plan_limit_days(cls, resolution: str) -> int:
+        if resolution.upper() in cls.DAILY_RESOLUTIONS:
+            return cls.DAILY_PLAN_DAYS
+        return cls.INTRADAY_PLAN_DAYS
+
+    @classmethod
+    def _plan_limit_message(cls, resolution: str, earliest: date) -> str:
+        if resolution.upper() in cls.DAILY_RESOLUTIONS:
+            return (
+                "Daily history is limited to the last 5 years on the Fyers Standard "
+                f"plan. Choose a start date on or after {earliest.isoformat()} or "
+                "upgrade to Fyers Prime."
+            )
+        return (
+            "Intraday history is limited to the last 1 year on the Fyers Standard "
+            f"plan. Choose a start date on or after {earliest.isoformat()}, switch "
+            "to Daily, or upgrade to Fyers Prime."
+        )
 
     @staticmethod
     def _parse_candle(raw: Iterable[Any]) -> Candle | None:

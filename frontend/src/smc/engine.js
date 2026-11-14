@@ -75,6 +75,14 @@ export class SMCEngine {
     this.equalDisplays = [];
     this.alerts = [];
 
+    // Instrumentation used by the probability model. These do not change any
+    // Pine-faithful output; they only record the lifecycle of each level.
+    this.levelHistory = [];
+    this.orderBlockHistory = [];
+    this.orderBlockId = 0;
+    this.swingTrendSeries = [];
+    this.internalTrendSeries = [];
+
     this.atr = null;
     this.volatility = null;
   }
@@ -131,6 +139,9 @@ export class SMCEngine {
       if (this.config.showSwingOrderBlocks) {
         this.deleteOrderBlocks(i, false);
       }
+
+      this.swingTrendSeries.push(this.swingTrend);
+      this.internalTrendSeries.push(this.internalTrend);
     }
 
     return this.buildDrawables();
@@ -178,6 +189,17 @@ export class SMCEngine {
     pivot.crossed = false;
     pivot.barTime = pivotBar.time;
     pivot.barIndex = index - size;
+
+    this.levelHistory.push({
+      type: equalHighLow ? 'equal' : internal ? 'internal' : 'swing',
+      side: isNewLow ? 'low' : 'high',
+      price: level,
+      previousPrice: oldLevel,
+      createdTime: pivotBar.time,
+      createdIndex: index - size,
+      confirmedTime: this.bars[index].time,
+      confirmedIndex: index,
+    });
 
     if (equalHighLow || internal) {
       return;
@@ -392,11 +414,29 @@ export class SMCEngine {
     }
 
     const orderBlock = {
+      id: (this.orderBlockId += 1),
       barHigh: this.parsedHighs[bestIndex],
       barLow: this.parsedLows[bestIndex],
       barTime: this.times[bestIndex],
       bias,
+      confirmedTime: this.bars[index].time,
+      confirmedIndex: index,
     };
+
+    this.orderBlockHistory.push({
+      id: orderBlock.id,
+      type: internal ? 'ob-internal' : 'ob-swing',
+      side: bias === BEARISH ? 'high' : 'low',
+      top: orderBlock.barHigh,
+      bottom: orderBlock.barLow,
+      bias,
+      createdTime: orderBlock.barTime,
+      createdIndex: bestIndex,
+      confirmedTime: this.bars[index].time,
+      confirmedIndex: index,
+      removedTime: null,
+      removedIndex: null,
+    });
 
     const orderBlocks = internal ? this.internalOrderBlocks : this.swingOrderBlocks;
     orderBlocks.unshift(orderBlock);
@@ -426,6 +466,15 @@ export class SMCEngine {
           tag: 'OrderBlockBreak',
           time: bar.time,
         });
+        if (orderBlock.id != null) {
+          const history = this.orderBlockHistory.find(
+            (entry) => entry.id === orderBlock.id && entry.removedIndex == null,
+          );
+          if (history) {
+            history.removedTime = bar.time;
+            history.removedIndex = index;
+          }
+        }
         orderBlocks.splice(i, 1);
       }
     }

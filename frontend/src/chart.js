@@ -1,4 +1,4 @@
-import { CandlestickSeries, CrosshairMode, TickMarkType, createChart } from 'lightweight-charts';
+import { CandlestickSeries, CrosshairMode, LineSeries, TickMarkType, createChart } from 'lightweight-charts';
 
 const IST = 'Asia/Kolkata';
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -99,7 +99,34 @@ export function createSMCChart(container) {
     lastValueVisible: true,
   });
 
-  return { chart, series };
+  const alligator = {
+    jaw: chart.addSeries(LineSeries, {
+      color: '#2962ff',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+      title: 'Alligator Jaw',
+    }),
+    teeth: chart.addSeries(LineSeries, {
+      color: '#ff6d00',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+      title: 'Alligator Teeth',
+    }),
+    lips: chart.addSeries(LineSeries, {
+      color: '#00e676',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+      title: 'Alligator Lips',
+    }),
+  };
+
+  return { chart, series, alligator };
 }
 
 export function visibleBarsForResolution(resolution) {

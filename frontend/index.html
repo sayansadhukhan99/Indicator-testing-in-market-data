@@ -77,6 +77,17 @@
           <label class="check"><input id="showWeak" type="checkbox" checked /> Weak H/L</label>
           <label class="check"><input id="showEQ" type="checkbox" checked /> EQH/EQL</label>
           <label class="check"><input id="showSwings" type="checkbox" /> HH/LL</label>
+          <label class="check"><input id="showAlligator" type="checkbox" checked /> Alligator</label>
+          <label class="check"><input id="showCpr" type="checkbox" checked /> CPR</label>
+          <label class="check"><input id="showProbabilities" type="checkbox" checked /> Probabilities</label>
+          <label class="field compact">
+            <span>Horizon</span>
+            <select id="probHorizon">
+              <option value="10">10 bars</option>
+              <option value="20" selected>20 bars</option>
+              <option value="40">40 bars</option>
+            </select>
+          </label>
 
           <label class="check"><input id="showInternalOB" type="checkbox" checked /> Internal OB</label>
           <label class="field compact">
@@ -84,6 +95,11 @@
             <input id="iobSize" type="number" min="1" max="20" value="5" />
           </label>
           <label class="check"><input id="showSwingOB" type="checkbox" /> Swing OB</label>
+
+          <div class="divider"></div>
+
+          <button id="levelBtn" class="ghost" type="button" title="Click the chart to place a horizontal level">+ Level</button>
+          <button id="clearLevelsBtn" class="ghost" type="button" title="Remove all saved levels for this symbol">Clear levels</button>
 
           <label id="liveLabel" class="check"><input id="autoRefresh" type="checkbox" checked /> Live</label>
 
@@ -125,27 +141,67 @@
       <div class="chart-wrap">
         <main id="chart"></main>
 
+        <div id="levelsPanel" class="levels-panel" hidden>
+          <div class="levels-head">
+            <span>Levels</span>
+            <span id="levelsCount" class="levels-count">0</span>
+          </div>
+          <ul id="levelsList" class="levels-list"></ul>
+        </div>
+
         <aside id="analysis" class="analysis" hidden>
           <div class="analysis-head">
-            <span id="analysisTitle" class="analysis-title">Date mode · indicator readout</span>
+            <span id="analysisTitle" class="analysis-title">Indicator readout</span>
             <span id="analysisRange" class="analysis-range"></span>
           </div>
 
-          <div class="analysis-grid">
-            <div class="stat"><span>Bars</span><b id="aBars">–</b></div>
-            <div class="stat"><span>Swing trend</span><b id="aSwingTrend">–</b></div>
-            <div class="stat"><span>Internal trend</span><b id="aInternalTrend">–</b></div>
-            <div class="stat"><span>Structures</span><b id="aStructures">–</b></div>
-            <div class="stat"><span>Breaker / Trap</span><b id="aSignals">–</b></div>
-            <div class="stat"><span>Order blocks</span><b id="aObs">–</b></div>
-            <div class="stat"><span>EQH / EQL</span><b id="aEq">–</b></div>
-            <div class="stat"><span>Swing points</span><b id="aSwingPoints">–</b></div>
-            <div class="stat wide"><span>Key levels</span><b id="aLevels">–</b></div>
+          <div class="analysis-section context-section">
+            <span class="analysis-label">Market context</span>
+            <div class="context-grid">
+              <div class="stat"><span>Daily</span><b id="ctxDaily">–</b></div>
+              <div class="stat"><span>1h</span><b id="ctxHourly">–</b></div>
+              <div class="stat"><span>Alignment</span><b id="ctxAlignment">–</b></div>
+              <div class="stat"><span>HTF ATR</span><b id="ctxAtr">–</b></div>
+            </div>
           </div>
 
-          <div class="analysis-section">
+          <div id="analysisStats" class="analysis-section">
+            <span class="analysis-label">Range statistics</span>
+            <div class="analysis-grid">
+              <div class="stat"><span>Bars</span><b id="aBars">–</b></div>
+              <div class="stat"><span>Swing trend</span><b id="aSwingTrend">–</b></div>
+              <div class="stat"><span>Internal trend</span><b id="aInternalTrend">–</b></div>
+              <div class="stat"><span>Structures</span><b id="aStructures">–</b></div>
+              <div class="stat"><span>Breaker / Trap</span><b id="aSignals">–</b></div>
+              <div class="stat"><span>Order blocks</span><b id="aObs">–</b></div>
+              <div class="stat"><span>EQH / EQL</span><b id="aEq">–</b></div>
+              <div class="stat"><span>Swing points</span><b id="aSwingPoints">–</b></div>
+              <div class="stat wide"><span>Key levels</span><b id="aLevels">–</b></div>
+            </div>
+          </div>
+
+          <div id="analysisEventsSection" class="analysis-section">
             <span class="analysis-label">Recent signals</span>
             <ol id="analysisEvents" class="events"></ol>
+          </div>
+
+          <div id="probabilitySection" class="analysis-section">
+            <span class="analysis-label">Liquidity probabilities</span>
+            <div class="prob-table-wrap">
+              <table class="prob-table">
+                <thead>
+                  <tr>
+                    <th>Level</th>
+                    <th>Break</th>
+                    <th>Reject</th>
+                    <th>n</th>
+                    <th>HTF</th>
+                  </tr>
+                </thead>
+                <tbody id="probabilityRows"></tbody>
+              </table>
+            </div>
+            <p id="probabilityNote" class="analysis-note"></p>
           </div>
 
           <p id="analysisNote" class="analysis-note">
